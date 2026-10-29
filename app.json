@@ -1,12 +1,16 @@
 {
   "expo": {
-    "name": "irish-mobile",
+    "name": "IRISH Docs",
     "slug": "irish-mobile",
     "version": "1.0.0",
+    "scheme": "irishdocs",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -16,6 +20,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.sahatchaibeam.irishdocs",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -28,6 +33,15 @@
     "plugins": [
       "expo-font",
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e096e2b0-1541-4b0a-acf5-bae16bf3096d"
+      }
+    },
+    "owner": "sahatchai",
+    "updates": {
+      "url": "https://u.expo.dev/e096e2b0-1541-4b0a-acf5-bae16bf3096d"
+    }
   }
 }
