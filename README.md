@@ -22,6 +22,8 @@ npx expo start
 - กด `w` เปิดบนเว็บ หรือสแกน QR ด้วยแอป **Expo Go** (ต้องเป็น Expo Go ที่รองรับ SDK 54)
 - มือถือต้องอยู่ Wi-Fi วงเดียวกับคอมพิวเตอร์ · ถ้าเครื่องมีหลายการ์ดเครือข่าย (เช่น VMware) แล้ว QR ชี้ผิด IP ให้ระบุ IP ของ Wi-Fi เอง (PowerShell):
   `$env:REACT_NATIVE_PACKAGER_HOSTNAME = '<IP Wi-Fi>'; npx expo start --lan`
+- เปิด QR ผ่านหน้าเว็บ: ระหว่างที่ `npx expo start` ทำงาน เปิด http://localhost:8081/expo-qr.html (ไฟล์ `public/expo-qr.html` อ่าน IP ที่ Expo ใช้อยู่แล้วสร้าง QR ให้ เปลี่ยน Wi-Fi แล้วสั่ง expo start ใหม่ แล้วรีเฟรชหน้า)
+- Wi-Fi มหาวิทยาลัยมักกันมือถือคุยกับคอมพิวเตอร์โดยตรง: ใช้ฮอตสปอตของมือถือแทน หรือ `npx expo start --tunnel` (เปิดเซิร์ฟเวอร์ผ่านอินเทอร์เน็ต)
 - ถ้ายังไม่ได้ใส่ค่า Supabase แอปจะอยู่ใน **โหมดสาธิต**: บัญชี `demo@irish.lab` / `irish1234` (นักศึกษา ป.โท) ข้อมูลตัวอย่างอยู่ในหน่วยความจำ รีเฟรชแล้วรีเซ็ต
 - เครื่อง RAM น้อย: ใช้ `npx expo start --web --max-workers 1`
 

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QR สำหรับ Expo Go · IRISH Docs</title>
+<style>
+  :root { --ink: #172B4D; --muted: #44546F; --line: #D8E0EC; --bg: #F5F8FF; --primary: #155EEF; --error: #B42318; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink);
+         font: 16px/1.6 "Noto Sans Thai", "Leelawadee UI", Tahoma, sans-serif; padding: 24px 16px; }
+  main { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 28px; max-width: 420px; width: 100%; text-align: center; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; color: var(--muted); }
+  #qr { display: inline-block; padding: 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; margin: 8px 0 12px; }
+  #qr img, #qr canvas { display: block; }
+  code { display: block; font-size: 15px; background: var(--bg); border-radius: 8px; padding: 8px; color: var(--ink); word-break: break-all; }
+  ol { text-align: left; color: var(--muted); padding-left: 20px; margin: 16px 0 0; }
+  .error { color: var(--error); }
+</style>
+</head>
+<body>
+<main>
+  <h1>เปิด IRISH Docs ใน Expo Go</h1>
+  <p id="status">กำลังอ่านที่อยู่จาก Expo…</p>
+  <div id="qr" hidden></div>
+  <code id="url"></code>
+  <ol>
+    <li>มือถือต่อ Wi-Fi วงเดียวกับคอมพิวเตอร์</li>
+    <li>Android: เปิด Expo Go → Scan QR code · iPhone: สแกนด้วยกล้อง</li>
+    <li>ล็อกอินด้วยอีเมล หรือ "เข้าสู่ระบบด้วย Google"</li>
+  </ol>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  // หน้านี้ถูกเสิร์ฟโดย Expo (npx expo start) เอง จึงถาม manifest ได้ว่า Expo กำลังใช้ IP ไหน
+  // เปลี่ยน Wi-Fi แล้วแค่สั่ง expo start ใหม่ แล้วรีเฟรชหน้านี้ QR จะตาม IP ใหม่
+  const status = document.getElementById('status');
+  fetch('/', { headers: { 'expo-platform': 'android', accept: 'application/expo+json,application/json' } })
+    .then((res) => res.json())
+    .then((manifest) => {
+      const hostUri = manifest?.extra?.expoClient?.hostUri || manifest?.hostUri;
+      if (!hostUri) throw new Error('ไม่พบ hostUri ใน manifest');
+      const url = 'exp://' + hostUri;
+      document.getElementById('url').textContent = url;
+      const box = document.getElementById('qr');
+      box.hidden = false;
+      new QRCode(box, { text: url, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M });
+      status.textContent = 'สแกน QR นี้ด้วยมือถือ';
+    })
+    .catch((e) => {
+      status.textContent = 'อ่านที่อยู่ไม่ได้: เปิดหน้านี้ผ่าน http://localhost:8081/expo-qr.html ขณะที่ npx expo start ทำงานอยู่ (' + e.message + ')';
+      status.className = 'error';
+    });
+</script>
+</body>
+</html>
