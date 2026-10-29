@@ -67,6 +67,29 @@ npx expo start
 3. เปิด web preview ตรวจด้วยตาว่าไม่มีจอแดง แล้ว **Save** ได้ลิงก์ `snack.expo.dev/@user/name`
 4. Snack ที่บันทึกแล้วเป็นสาธารณะ: ถ้าใส่ anon key ไว้ ข้อมูลยังปลอดภัยด้วย RLS แต่ถ้าจะแชร์ลิงก์กว้าง ๆ ให้ใช้โหมดสาธิต
 
+## 3.1 ติดตั้งเป็นแอป Android (APK) และอัปเดตโดยไม่ต้องติดตั้งใหม่
+
+ใช้ EAS Build (สร้าง APK บนคลาวด์ของ Expo) + EAS Update (ส่งโค้ดใหม่ให้แอปที่ติดตั้งแล้ว) · โปรเจกต์ EAS: `@sahatchai/irish-mobile`
+- APK ต่อ Supabase ตรงผ่านอินเทอร์เน็ต ไม่ต้องเปิดคอมพิวเตอร์หรืออยู่ Wi-Fi เดียวกัน และไม่ติดปัญหา SDK ของ Expo Go
+- ค่า Supabase ของ APK อยู่ใน EAS environment `preview` (ดูด้วย `npx eas-cli env:list --environment preview`) ไม่ได้อ่านจาก `.env.local`
+
+**สร้าง APK (ทำเมื่อเริ่มต้น หรือเมื่อต้องมี APK ใหม่):**
+```
+npx eas-cli login
+npx eas-cli build -p android --profile preview
+```
+รอ 10–30 นาที → เปิดลิงก์/QR ที่ได้บนมือถือ → ดาวน์โหลด → ติดตั้ง (อนุญาต "ติดตั้งแอปที่ไม่รู้จัก")
+
+**อัปเดตหลังแก้โค้ด (หน้าจอ ข้อความ สี ลอจิก ไฟล์ .js):**
+```
+npx eas-cli update --channel preview --environment preview --message "อธิบายสิ่งที่แก้"
+```
+แอปตรวจอัปเดตตอนเปิด: เปิดครั้งแรกดาวน์โหลดเบื้องหลัง → ปิดแล้วเปิดใหม่จะเป็นเวอร์ชันใหม่
+
+**ต้อง build APK ใหม่เมื่อ:** เพิ่มไลบรารีที่มีโค้ด native (`npx expo install` ตัวใหม่) · แก้ค่า native ใน `app.json` (ชื่อแอป ไอคอน scheme package) · อัปเกรด SDK · เปลี่ยน `version` (runtimeVersion ผูกกับ version อัปเดตจึงส่งถึงเฉพาะ APK ที่ version ตรงกัน)
+
+Google login ในแอปที่ติดตั้ง: เด้งกลับด้วย `irishdocs://auth-callback` (Supabase Redirect URLs มี `irishdocs://**` แล้ว)
+
 ## 4. โครงสร้าง
 
 ```

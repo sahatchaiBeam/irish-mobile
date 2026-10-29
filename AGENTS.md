@@ -11,7 +11,8 @@
 
 ## 2. Stack (ห้ามเปลี่ยน)
 - Expo SDK 54 · entry `App.js` · JavaScript (`.js`) ห้าม TypeScript
-- รันได้ 2 แบบ: `npx expo start` (Expo Go / web) และ Expo Snack ผ่าน `snack.config.json`
+- รันได้ 3 แบบ: `npx expo start` (Expo Go / web) · Expo Snack ผ่าน `snack.config.json` · APK Android ผ่าน EAS Build (`eas.json` โปรไฟล์ `preview`)
+  - แก้เฉพาะ JS → ส่งให้ APK ด้วย `eas update --channel preview` · เพิ่มไลบรารี native หรือแก้ค่า native ใน `app.json` → ต้อง build APK ใหม่ และบอกผู้ใช้
 - `snack.config.json` มี 4 key: `name`, `sdkVersion`, `files` (ทุกไฟล์ `.js` ยกเว้น index.js), `dependencies`
   - เพิ่มไฟล์ `.js` ใหม่ → ต้องเพิ่มใน `"files"` ทันที ไม่เช่นนั้น Snack ขึ้นจอแดง "Unable to resolve module"
   - เพิ่ม dependency → ใช้ `npx expo install <pkg>` แล้วคัดลอกเวอร์ชันไปใส่ `snack.config.json` และบอกผู้ใช้
