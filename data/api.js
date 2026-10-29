@@ -2,7 +2,10 @@
 // - ใส่ค่าใน data/config.js แล้ว → คุยกับ Supabase (Auth + ตาราง categories / templates / tasks / task_documents / document_events)
 // - ยังไม่ใส่ค่า → โหมดสาธิต ใช้ข้อมูลในหน่วยความจำจาก data/demoStore.js
 // ทุกฟังก์ชันคืน Promise และโยน Error ที่มีข้อความภาษาไทย ให้หน้าจอนำไปแสดงได้เลย
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 import { supabase } from './supabase';
 import { IS_SUPABASE_CONFIGURED } from './config';
 import { DEMO_ACCOUNT, DEMO_CATEGORIES, DEMO_TEMPLATES, createDemoData, newId } from './demoStore';
@@ -25,6 +28,7 @@ function thaiError(error) {
   if (/email not confirmed/i.test(msg)) return 'ยังไม่ได้ยืนยันอีเมล กรุณากดลิงก์ในอีเมลก่อน';
   if (/password should be at least/i.test(msg)) return 'รหัสผ่านต้องยาวอย่างน้อย 6 ตัวอักษร';
   if (/rate limit/i.test(msg)) return 'ลองหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่';
+  if (/provider is not enabled|unsupported provider/i.test(msg)) return 'ยังไม่ได้เปิดการเข้าสู่ระบบด้วย Google ใน Supabase';
   if (/failed to fetch|network/i.test(msg)) return 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่';
   if (/row-level security|permission denied/i.test(msg)) return 'คุณไม่มีสิทธิ์แก้ไขรายการนี้';
   if (/reason required/i.test(msg)) return 'กรุณาเลือกเหตุผลที่ตีกลับ';
@@ -208,6 +212,40 @@ export async function signUp({ name, email, password }) {
   });
   if (error) fail(error);
   return { user: data.session ? toUser(data.user) : null, needsConfirm: !data.session };
+}
+
+// เข้าสู่ระบบด้วย Google (เฉพาะโหมด Supabase · ต้องเปิด provider Google ใน Supabase ก่อน)
+// - เว็บ: เด้งไปหน้า Google แล้วกลับมาหน้าเดิม supabase อ่าน session จาก URL เอง → คืน null
+// - มือถือ: เปิดเบราว์เซอร์ระบบ แล้วรับ token จากลิงก์ที่เด้งกลับ (Expo Go: exp://…/--/auth-callback)
+// คืน null เมื่อผู้ใช้ปิดหน้า Google เอง
+export async function signInWithGoogle() {
+  if (IS_DEMO) throw new Error('โหมดสาธิตเข้าสู่ระบบได้ด้วยอีเมลเท่านั้น');
+  if (Platform.OS === 'web') {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    });
+    if (error) fail(error);
+    return null;
+  }
+  const redirectTo = Linking.createURL('auth-callback');
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo, skipBrowserRedirect: true },
+  });
+  if (error) fail(error);
+  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+  if (result.type !== 'success') return null;
+  // token อยู่หลัง # (หรือ ? ถ้ามี error) ของลิงก์ที่เด้งกลับ
+  const params = new URLSearchParams(result.url.split(/[?#]/).slice(1).join('&'));
+  if (params.get('error_description')) fail(params.get('error_description'));
+  if (!params.get('access_token')) throw new Error('ไม่ได้รับข้อมูลเข้าสู่ระบบจาก Google กรุณาลองใหม่');
+  const { data: signedIn, error: sessionError } = await supabase.auth.setSession({
+    access_token: params.get('access_token'),
+    refresh_token: params.get('refresh_token'),
+  });
+  if (sessionError) fail(sessionError);
+  return toUser(signedIn.user);
 }
 
 export async function signOut() {

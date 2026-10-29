@@ -46,6 +46,17 @@ npx expo start
 
 ตรวจว่าเชื่อมสำเร็จ: หน้าโปรไฟล์แสดง "เชื่อมต่อ Supabase แล้ว" · สร้างงานแล้วเห็นแถวใหม่ใน **Table Editor → tasks / task_documents** · อัปเดตสถานะแล้วเห็นแถวใน **document_events**
 
+### 2.1 เข้าสู่ระบบด้วย Google (ไม่บังคับ)
+
+ปุ่ม "เข้าสู่ระบบด้วย Google" แสดงเฉพาะโหมด Supabase · ใช้ OAuth client ตัวเดียวกับเว็บแอปได้
+1. **Google Cloud Console → APIs & Services → Credentials →** OAuth client (Web application) ตัวที่เว็บใช้ → **Authorized redirect URIs** เพิ่ม
+   `https://<project-ref>.supabase.co/auth/v1/callback`
+2. **Supabase → Authentication → Sign In / Providers → Google** → เปิด → วาง **Client ID** และ **Client Secret** → Save
+3. **Supabase → Authentication → URL Configuration → Redirect URLs** มี `http://localhost:8081/**` (เว็บ) และ `exp://**` (Expo Go)
+4. ถ้า OAuth consent screen ของ Google ยังเป็นโหมด Testing ต้องเพิ่มอีเมลผู้ทดสอบใน Test users ก่อน
+
+การทำงาน: เว็บเด้งไปหน้า Google แล้วกลับมาหน้าเดิม · มือถือเปิดเบราว์เซอร์ระบบ (`expo-web-browser`) แล้วรับ token จากลิงก์ `exp://…/--/auth-callback` (`expo-linking`) · ผู้ใช้ใหม่ได้แถว `profiles` จากชื่อในบัญชี Google อัตโนมัติ
+
 ## 3. ขึ้น Expo Snack (Workshop 4)
 
 `snack.config.json` เตรียมไว้แล้ว (SDK 54, ไฟล์ `.js` ครบ, dependencies ครบ)

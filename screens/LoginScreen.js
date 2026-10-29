@@ -5,7 +5,7 @@ import { colors, spacing, radius, type, size } from '../theme';
 import TextField from '../components/TextField';
 import Button from '../components/Button';
 import Notice from '../components/Notice';
-import { signIn, signUp, validateCredentials, IS_DEMO } from '../data/api';
+import { signIn, signUp, signInWithGoogle, validateCredentials, IS_DEMO } from '../data/api';
 import { DEMO_ACCOUNT } from '../data/demoStore';
 
 export default function LoginScreen({ onSignedIn }) {
@@ -17,7 +17,22 @@ export default function LoginScreen({ onSignedIn }) {
   const [formError, setFormError] = useState('');
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const isSignUp = mode === 'signup';
+
+  async function handleGoogle() {
+    setFormError('');
+    setInfo('');
+    setGoogleLoading(true);
+    try {
+      const user = await signInWithGoogle();
+      if (user) onSignedIn(user); // เว็บจะเด้งไปหน้า Google ก่อน แล้วกลับมาพร้อม session
+    } catch (e) {
+      setFormError(e.message);
+    } finally {
+      setGoogleLoading(false);
+    }
+  }
 
   async function handleSubmit() {
     setFormError('');
@@ -114,7 +129,27 @@ export default function LoginScreen({ onSignedIn }) {
             onPress={handleSubmit}
             loading={loading}
             loadingLabel={isSignUp ? 'กำลังสมัคร…' : 'กำลังเข้าสู่ระบบ…'}
+            disabled={googleLoading}
           />
+
+          {IS_DEMO ? null : (
+            <>
+              <View style={styles.or}>
+                <View style={styles.rule} />
+                <Text style={styles.orText}>หรือ</Text>
+                <View style={styles.rule} />
+              </View>
+              <Button
+                label="เข้าสู่ระบบด้วย Google"
+                variant="outline"
+                icon="logo-google"
+                onPress={handleGoogle}
+                loading={googleLoading}
+                loadingLabel="กำลังเปิด Google…"
+                disabled={loading}
+              />
+            </>
+          )}
 
           <Pressable
             onPress={switchMode}
@@ -190,6 +225,20 @@ const styles = StyleSheet.create({
   title: {
     ...type.headlineMd,
     color: colors.onSurface,
+  },
+  or: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  rule: {
+    flex: 1,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+  },
+  orText: {
+    ...type.bodySm,
+    color: colors.muted,
   },
   switch: {
     alignItems: 'center',
