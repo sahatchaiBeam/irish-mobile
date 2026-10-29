@@ -20,6 +20,8 @@ npm install
 npx expo start
 ```
 - กด `w` เปิดบนเว็บ หรือสแกน QR ด้วยแอป **Expo Go** (ต้องเป็น Expo Go ที่รองรับ SDK 54)
+- มือถือต้องอยู่ Wi-Fi วงเดียวกับคอมพิวเตอร์ · ถ้าเครื่องมีหลายการ์ดเครือข่าย (เช่น VMware) แล้ว QR ชี้ผิด IP ให้ระบุ IP ของ Wi-Fi เอง (PowerShell):
+  `$env:REACT_NATIVE_PACKAGER_HOSTNAME = '<IP Wi-Fi>'; npx expo start --lan`
 - ถ้ายังไม่ได้ใส่ค่า Supabase แอปจะอยู่ใน **โหมดสาธิต**: บัญชี `demo@irish.lab` / `irish1234` (นักศึกษา ป.โท) ข้อมูลตัวอย่างอยู่ในหน่วยความจำ รีเฟรชแล้วรีเซ็ต
 - เครื่อง RAM น้อย: ใช้ `npx expo start --web --max-workers 1`
 
@@ -30,7 +32,7 @@ npx expo start
    ถ้าเคยรัน schema v1 (มีตาราง `checklist_items`) ให้ใช้โปรเจกต์ใหม่ เพราะตาราง `tasks` เปลี่ยนคอลัมน์
 3. **Authentication → Sign In / Providers → Email**: สำหรับวัน demo แนะนำปิด **Confirm email** (สมัครแล้วเข้าได้ทันที)
    ถ้าเปิดไว้ แอปจะแจ้ง "สมัครสำเร็จ กรุณากดลิงก์ยืนยันในอีเมล…"
-4. **Project Settings → API**: คัดลอก **Project URL** และ **anon public key**
+4. **Project Settings → API Keys**: คัดลอก **Project URL** และ **Publishable key** (`sb_publishable_…`) หรือ anon key แบบเดิม
    - รันในเครื่อง: คัดลอก `.env.example` เป็น `.env.local` แล้วใส่ค่า (ไฟล์นี้ไม่ขึ้น Git)
      ```
      EXPO_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
