@@ -2,8 +2,9 @@ import { todayISO, daysBetween, formatShortDate } from './dates';
 import { isTaskComplete } from './docStatus';
 
 // งาน "เสร็จ" = เอกสารที่ต้องมีผ่านครบทุกชิ้น (คำนวณ ไม่เก็บในฐานข้อมูล)
+// งานจากเว็บอาจยังไม่กำหนดวันส่ง → ถือว่าอีกนาน (ไม่ขึ้นเตือน)
 export function daysLeft(task, today = todayISO()) {
-  return daysBetween(today, task.dueDate);
+  return task.dueDate ? daysBetween(today, task.dueDate) : Infinity;
 }
 
 export function isOverdue(task, today = todayISO()) {
@@ -12,6 +13,7 @@ export function isOverdue(task, today = todayISO()) {
 
 // บรรทัดกำหนดส่งบนการ์ด: { tone: 'error' | 'warning' | 'muted' | 'success', text }
 export function deadlineLine(task, today = todayISO()) {
+  if (!task.dueDate) return isTaskComplete(task) ? { tone: 'success', text: 'เอกสารผ่านครบ' } : { tone: 'muted', text: 'ยังไม่กำหนดวันส่ง' };
   const due = formatShortDate(task.dueDate);
   if (isTaskComplete(task)) return { tone: 'success', text: `เอกสารผ่านครบ · กำหนด ${due}` };
   const left = daysLeft(task, today);
@@ -27,7 +29,7 @@ export function sortTasks(tasks) {
     const doneA = isTaskComplete(a) ? 1 : 0;
     const doneB = isTaskComplete(b) ? 1 : 0;
     if (doneA !== doneB) return doneA - doneB;
-    return a.dueDate.localeCompare(b.dueDate);
+    return (a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31');
   });
 }
 

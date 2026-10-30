@@ -45,6 +45,8 @@ export default function TaskFormScreen({ task, defaultCategoryId, onBack, onSave
       setCategories(cats);
       setTemplates(tpls);
       setOwnerSuggestions([...new Set(tasks.map((t) => t.accountOwner).filter(Boolean))].slice(0, 4));
+      // มีทีมเดียว (เช่น แล็บที่ใช้ร่วมกับเว็บ) เลือกให้เลย
+      if (!isEdit && !defaultCategoryId && cats.length === 1) setCategoryId(cats[0].id);
       // มาจากหน้าส่วนงาน: เลือกแม่แบบของส่วนนั้นให้ ถ้ามี
       if (!isEdit && defaultCategoryId) {
         const key = cats.find((c) => c.id === defaultCategoryId)?.key;

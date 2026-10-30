@@ -1,5 +1,8 @@
 // ทางเดียวที่หน้าจอใช้คุยกับข้อมูล (ตามกฎ AGENTS.md)
-// - ใส่ค่าใน data/config.js แล้ว → คุยกับ Supabase (Auth + ตาราง categories / templates / tasks / task_documents / document_events)
+// - ใส่ค่า Supabase แล้ว → ใช้ฐานข้อมูลเดียวกับเว็บ irish-docs (https://irish-docs.vercel.app)
+//   อ่าน: ตาราง user / categories (ทีม) / tasks / task_recipients / task_doc_states / activity (ผ่าน RLS)
+//   เขียน: ฟังก์ชันในฐานข้อมูล create_task / update_task / delete_task / add_doc_slot / remove_doc_slot / set_doc_state
+//   (สร้างใน irish-docs/drizzle/0020_supabase_access.sql · ตรวจสิทธิ์และบันทึกประวัติเหมือนเว็บ)
 // - ยังไม่ใส่ค่า → โหมดสาธิต ใช้ข้อมูลในหน่วยความจำจาก data/demoStore.js
 // ทุกฟังก์ชันคืน Promise และโยน Error ที่มีข้อความภาษาไทย ให้หน้าจอนำไปแสดงได้เลย
 import { Platform } from 'react-native';
@@ -33,6 +36,13 @@ function thaiError(error) {
   if (/row-level security|permission denied/i.test(msg)) return 'คุณไม่มีสิทธิ์แก้ไขรายการนี้';
   if (/reason required/i.test(msg)) return 'กรุณาเลือกเหตุผลที่ตีกลับ';
   if (/document not found/i.test(msg)) return 'ไม่พบเอกสารนี้ อาจถูกลบไปแล้ว';
+  if (/task not found/i.test(msg)) return 'ไม่พบงานนี้ อาจถูกลบไปแล้ว';
+  if (/not in team/i.test(msg)) return 'สร้างงานได้เฉพาะคนในทีม ขอให้หัวหน้าทีมเพิ่มคุณเข้าทีมในเว็บก่อน';
+  if (/forbidden/i.test(msg)) return 'คุณไม่มีสิทธิ์แก้งานนี้ (เฉพาะคนในงาน หัวหน้าทีม หรือแอดมิน)';
+  if (/already exists/i.test(msg)) return 'มีเอกสารชื่อนี้ในงานแล้ว';
+  if (/account owner required/i.test(msg)) return 'กรุณาระบุเจ้าของบัญชี เพื่อให้รู้ว่าต้องส่งเซ็นที่ใคร';
+  if (/title required/i.test(msg)) return 'กรุณากรอกชื่องาน';
+  if (/not signed in/i.test(msg)) return 'กรุณาเข้าสู่ระบบใหม่';
   return msg ? `เกิดข้อผิดพลาด: ${msg}` : 'เกิดข้อผิดพลาด กรุณาลองใหม่';
 }
 
@@ -75,72 +85,106 @@ function cleanDocName(name) {
   return clean;
 }
 
-// ---------- แปลงแถวจาก Supabase เป็นรูปที่หน้าจอใช้ ----------
+// ---------- แปลงแถวจาก Supabase (ตารางเดียวกับเว็บ) เป็นรูปที่หน้าจอใช้ ----------
+// งาน = tasks · เอกสารที่ต้องมี = tasks.doc_slots (ชื่อ) + task_doc_states (สถานะ) · ประวัติ = activity "สถานะเอกสาร"
+// id ของเอกสาร = ชื่อเอกสาร (เว็บใช้ task_id + ชื่อเป็นกุญแจ)
 
-function toDocument(row) {
-  return {
-    id: row.id,
-    taskId: row.task_id,
-    position: row.position,
-    name: row.name,
-    status: row.status,
-    holder: row.holder || '',
-    reason: row.reason || '',
-    dest: row.dest || '',
-    personal: !!row.personal,
-    changedAt: row.changed_at,
-  };
+const STATUS_BY_LABEL = { ร่าง: 'draft', รอเซ็น: 'waiting', ส่งแล้ว: 'sent', ตีกลับ: 'returned', ผ่าน: 'passed' };
+const PROCUREMENT_HINT = 'ใบเสนอราคา 3 ราย';
+const TASK_SELECT =
+  'id, category_id, title, description, type, doc_slots, account_owner, due_date, created_by, created_at, ' +
+  'task_recipients(id, name), task_doc_states(label, status, waiting_user_id, waiting_name, returns, restricted, updated_at)';
+
+// ชื่อคนในแล็บ (id → ชื่อ) จำไว้ 1 นาที
+let people = { at: 0, byId: new Map() };
+async function peopleById() {
+  if (Date.now() - people.at < 60000) return people.byId;
+  const { data, error } = await supabase.from('user').select('id, name');
+  if (error) fail(error);
+  people = { at: Date.now(), byId: new Map(data.map((u) => [u.id, u.name])) };
+  return people.byId;
 }
 
-function toTask(row) {
+// แม่แบบในแอป ↔ ประเภทงานของเว็บ: งานอบรม = event · จัดซื้อ = งานทั่วไปที่มีใบเสนอราคา · งานระบบลูกค้า = ไม่มีแม่แบบ
+function templateKeyOf(row) {
+  if (row.type === 'event') return 'training';
+  if (row.type === 'client') return null;
+  return (row.doc_slots || []).includes(PROCUREMENT_HINT) ? 'procurement' : 'general';
+}
+
+function toTask(row, names) {
+  const recipient = [...(row.task_recipients || [])].sort((a, b) => a.id - b.id)[0]?.name || '';
+  const states = new Map((row.task_doc_states || []).map((st) => [st.label, st]));
   return {
     id: row.id,
     categoryId: row.category_id,
-    templateKey: row.template_key,
+    templateKey: templateKeyOf(row),
     title: row.title,
     description: row.description || '',
     accountOwner: row.account_owner || '',
-    recipient: row.recipient || '',
+    recipient,
     dueDate: row.due_date,
-    ownerId: row.owner_id,
-    ownerName: row.owner?.full_name || 'สมาชิกแล็บ',
+    ownerId: row.created_by,
+    ownerName: names.get(row.created_by) || 'สมาชิกแล็บ',
     createdAt: row.created_at,
-    documents: (row.task_documents || []).map(toDocument).sort((a, b) => a.position - b.position),
+    documents: (row.doc_slots || []).map((label, position) => {
+      const st = states.get(label);
+      const status = st?.status || 'draft';
+      const open = (st?.returns || []).filter((r) => !r.done).map((r) => r.text);
+      return {
+        id: label,
+        taskId: row.id,
+        position,
+        name: label,
+        status,
+        holder: (st?.waiting_user_id && names.get(st.waiting_user_id)) || st?.waiting_name || '',
+        reason: status === 'returned' ? open.join(' · ') : '',
+        dest: '',
+        personal: !!st?.restricted,
+        changedAt: st && status !== 'draft' ? st.updated_at : null,
+      };
+    }),
   };
 }
 
-function toEvent(row) {
+// "เอกสารเบิกงบ: รอเซ็น → ตีกลับ (ขาดลายเซ็น) · หมายเหตุ: …" (รูปเดียวกับที่เว็บบันทึก)
+const EVENT_RE = /^(.*): (ร่าง|รอเซ็น|ส่งแล้ว|ตีกลับ|ผ่าน) → (ร่าง|รอเซ็น|ส่งแล้ว|ตีกลับ|ผ่าน)(?: \((.*?)\))?(?: · หมายเหตุ: (.*))?$/s;
+
+function toEvent(row, names) {
+  const m = EVENT_RE.exec(row.detail || '');
+  if (!m) return null;
+  const [, docName, fromLabel, toLabel, extra = '', note = ''] = m;
+  const toStatus = STATUS_BY_LABEL[toLabel];
   return {
-    id: row.id,
+    id: `a${row.id}`,
     taskId: row.task_id,
-    documentId: row.document_id,
-    docName: row.doc_name,
-    actorId: row.actor_id,
-    actorName: row.actor?.full_name || 'สมาชิกแล็บ',
-    fromStatus: row.from_status,
-    toStatus: row.to_status,
-    holder: row.holder || '',
-    reason: row.reason || '',
-    note: row.note || '',
+    documentId: docName,
+    docName,
+    actorId: row.user_id,
+    actorName: names.get(row.user_id) || 'สมาชิกแล็บ',
+    fromStatus: STATUS_BY_LABEL[fromLabel],
+    toStatus,
+    holder: toStatus === 'returned' ? '' : extra.replace(/^(รอใคร|ส่งให้) /, ''),
+    reason: toStatus === 'returned' ? extra : '',
+    note,
     createdAt: row.created_at,
   };
 }
 
-function toTemplate(row) {
-  return { key: row.key, name: row.name, categoryKey: row.category_key, dest: row.dest || '', documents: row.documents || [] };
+async function fetchEvents(filter) {
+  const query = filter(supabase.from('activity').select('id, task_id, user_id, detail, created_at').eq('action', 'สถานะเอกสาร'));
+  const [names, { data, error }] = await Promise.all([peopleById(), query.order('created_at', { ascending: false })]);
+  if (error) fail(error);
+  return data.map((row) => toEvent(row, names)).filter(Boolean);
 }
 
-function toUser(authUser) {
+// บัญชี Supabase → แถวของคนนั้นในตาราง user ของเว็บ (trigger ในฐานข้อมูลสร้าง/จับคู่ด้วยอีเมลตอนสมัคร)
+async function appUser(authUser) {
   if (!authUser) return null;
-  return {
-    id: authUser.id,
-    email: authUser.email,
-    name: authUser.user_metadata?.full_name || authUser.email.split('@')[0],
-  };
+  const { data } = await supabase.from('user').select('id, name, email').eq('auth_id', authUser.id).maybeSingle();
+  if (data) return { id: data.id, email: data.email, name: data.name };
+  return { id: authUser.id, email: authUser.email, name: authUser.user_metadata?.full_name || (authUser.email || '').split('@')[0] };
 }
-
-const TASK_SELECT = '*, owner:profiles(full_name), task_documents(*)';
-const EVENT_SELECT = '*, actor:profiles(full_name)';
 
 // ---------- โหมดสาธิต: state ในหน่วยความจำ ----------
 
@@ -171,13 +215,16 @@ export async function getCurrentUser() {
   if (IS_DEMO) return demo.user;
   const { data, error } = await supabase.auth.getSession();
   if (error) fail(error);
-  return toUser(data.session?.user);
+  return appUser(data.session?.user);
 }
 
 // แจ้งเมื่อสถานะล็อกอินเปลี่ยน (เช่น token หมดอายุ) คืนฟังก์ชันยกเลิก
 export function onAuthChange(callback) {
   if (IS_DEMO) return () => {};
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => callback(toUser(session?.user)));
+  // ห้ามเรียก supabase ภายใน callback โดยตรง (ค้างได้) จึงเลื่อนไปทำหลังจากนั้น
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    setTimeout(() => appUser(session?.user).then(callback), 0);
+  });
   return () => data.subscription.unsubscribe();
 }
 
@@ -192,7 +239,7 @@ export async function signIn({ email, password }) {
   }
   const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
   if (error) fail(error);
-  return toUser(data.user);
+  return appUser(data.user);
 }
 
 // คืน { user, needsConfirm } · needsConfirm = true เมื่อโปรเจกต์ Supabase เปิด "Confirm email" ไว้
@@ -211,7 +258,7 @@ export async function signUp({ name, email, password }) {
     options: { data: { full_name: name.trim() } },
   });
   if (error) fail(error);
-  return { user: data.session ? toUser(data.user) : null, needsConfirm: !data.session };
+  return { user: data.session ? await appUser(data.user) : null, needsConfirm: !data.session };
 }
 
 // เข้าสู่ระบบด้วย Google (เฉพาะโหมด Supabase · ต้องเปิด provider Google ใน Supabase ก่อน)
@@ -245,7 +292,7 @@ export async function signInWithGoogle() {
     refresh_token: params.get('refresh_token'),
   });
   if (sessionError) fail(sessionError);
-  return toUser(signedIn.user);
+  return appUser(signedIn.user);
 }
 
 export async function signOut() {
@@ -267,9 +314,10 @@ export async function fetchCategories() {
     if (SIMULATE_ERROR) throw new Error('โหลดข้อมูลไม่สำเร็จ');
     return clone(DEMO_CATEGORIES);
   }
-  const { data, error } = await supabase.from('categories').select('id, key, name, description').order('sort');
+  // ทีมในเว็บ (หน้า "ภาพรวมแต่ละส่วน" แสดงตามทีม) · ไม่มี key จึงใช้ไอคอนกลาง
+  const { data, error } = await supabase.from('categories').select('id, name, description').order('id');
   if (error) fail(error);
-  return data;
+  return data.map((c) => ({ id: c.id, key: null, name: c.name, description: c.description || '' }));
 }
 
 // แม่แบบ = ความรู้ของคนเก่า: แต่ละแบบมีรายการเอกสารที่ต้องมีและปลายทาง
@@ -278,9 +326,8 @@ export async function fetchTemplates() {
     await wait(150);
     return clone(DEMO_TEMPLATES);
   }
-  const { data, error } = await supabase.from('templates').select('key, name, category_key, dest, documents').order('sort');
-  if (error) fail(error);
-  return data.map(toTemplate);
+  // แม่แบบอยู่ในแอป (รายการเอกสารเดียวกับโหมดสาธิต) · ทีมให้ผู้ใช้เลือกเอง
+  return clone(DEMO_TEMPLATES).map((t) => ({ ...t, categoryKey: null }));
 }
 
 // ---------- งาน (CRUD) ----------
@@ -292,9 +339,13 @@ export async function fetchTasks() {
     if (SIMULATE_ERROR) throw new Error('โหลดข้อมูลไม่สำเร็จ');
     return clone(demoData().tasks);
   }
-  const { data, error } = await supabase.from('tasks').select(TASK_SELECT).order('due_date');
+  // งานที่ยังทำอยู่ (งานที่เว็บกด "เสร็จ" แล้ว และต้นแบบงาน ไม่แสดง) · งานในถังขยะ RLS ซ่อนให้
+  const [names, { data, error }] = await Promise.all([
+    peopleById(),
+    supabase.from('tasks').select(TASK_SELECT).neq('status', 'done').eq('is_example', false).order('due_date', { nullsFirst: false }),
+  ]);
   if (error) fail(error);
-  return data.map(toTask);
+  return data.map((row) => toTask(row, names));
 }
 
 export async function fetchTask(id) {
@@ -302,9 +353,10 @@ export async function fetchTask(id) {
     await wait(200);
     return clone(demoFind(id));
   }
-  const { data, error } = await supabase.from('tasks').select(TASK_SELECT).eq('id', id).single();
+  const [names, { data, error }] = await Promise.all([peopleById(), supabase.from('tasks').select(TASK_SELECT).eq('id', id).maybeSingle()]);
   if (error) fail(error);
-  return toTask(data);
+  if (!data) throw new Error('ไม่พบงานนี้ อาจถูกลบไปแล้ว');
+  return toTask(data, names);
 }
 
 // input = { templateKey, title, categoryId, accountOwner, recipient, dueDate, description, documents: [{ name, personal }] }
@@ -346,26 +398,19 @@ export async function createTask(input) {
     demoData().tasks.push(task);
     return clone(task);
   }
-  const { data, error } = await supabase
-    .from('tasks')
-    .insert({
-      template_key: fields.templateKey,
-      title: fields.title,
-      category_id: fields.categoryId,
-      account_owner: fields.accountOwner,
-      recipient: fields.recipient,
-      due_date: fields.dueDate,
-      description: fields.description,
-    })
-    .select('id')
-    .single();
+  // งานอบรม = ประเภท event ของเว็บ (มีส่วนการเงิน/ภาพถ่าย) · เอกสารที่มีข้อมูลส่วนบุคคลล็อกให้ตามตั้งค่าในเว็บ
+  const { data: id, error } = await supabase.rpc('create_task', {
+    p_category_id: fields.categoryId,
+    p_title: fields.title,
+    p_type: fields.templateKey === 'training' ? 'event' : 'general',
+    p_doc_slots: docs.map((d) => d.name.trim()),
+    p_account_owner: fields.accountOwner,
+    p_recipient: fields.recipient,
+    p_due_date: fields.dueDate,
+    p_description: fields.description,
+  });
   if (error) fail(error);
-  if (docs.length) {
-    const rows = docs.map((d, position) => ({ task_id: data.id, name: d.name.trim(), personal: !!d.personal, position }));
-    const { error: docError } = await supabase.from('task_documents').insert(rows);
-    if (docError) fail(docError);
-  }
-  return fetchTask(data.id);
+  return fetchTask(id);
 }
 
 // patch = title, categoryId, accountOwner, recipient, dueDate, description (ส่งมาเฉพาะที่แก้)
@@ -381,16 +426,19 @@ export async function updateTask(id, patch) {
     });
     return clone(task);
   }
+  // ย้ายทีมทำในเว็บ · ที่นี่แก้ชื่อ เจ้าของบัญชี ส่งให้ กำหนดส่ง รายละเอียด
   const current = await fetchTask(id);
-  assertValid(validateTask({ ...current, ...patch }));
-  const row = {};
-  if ('title' in patch) row.title = patch.title.trim();
-  if ('description' in patch) row.description = patch.description.trim();
-  if ('accountOwner' in patch) row.account_owner = patch.accountOwner.trim();
-  if ('recipient' in patch) row.recipient = patch.recipient.trim();
-  if ('categoryId' in patch) row.category_id = patch.categoryId;
-  if ('dueDate' in patch) row.due_date = patch.dueDate;
-  const { error } = await supabase.from('tasks').update(row).eq('id', id);
+  if ('categoryId' in patch && patch.categoryId !== current.categoryId) throw new Error('ย้ายงานไปทีมอื่นทำในเว็บ (หน้างาน → ย้ายงาน)');
+  const next = { ...current, ...patch };
+  assertValid(validateTask(next));
+  const { error } = await supabase.rpc('update_task', {
+    p_task_id: id,
+    p_title: next.title.trim(),
+    p_account_owner: next.accountOwner.trim(),
+    p_recipient: (next.recipient || '').trim(),
+    p_due_date: next.dueDate,
+    p_description: (next.description || '').trim(),
+  });
   if (error) fail(error);
   return fetchTask(id);
 }
@@ -405,10 +453,12 @@ export async function deleteTask(id) {
     data.events = data.events.filter((e) => e.taskId !== id);
     return;
   }
-  // RLS อนุญาตให้ลบเฉพาะเจ้าของงาน ถ้าไม่ใช่เจ้าของ จะไม่มีแถวถูกลบ
-  const { data, error } = await supabase.from('tasks').delete().eq('id', id).select('id');
-  if (error) fail(error);
-  if (!data.length) throw new Error('ลบได้เฉพาะงานที่คุณสร้าง');
+  // เหมือนลบในเว็บ: ย้ายไปถังขยะ (กู้คืนได้ในเว็บ) · ผู้สร้างงาน หัวหน้าทีม หรือแอดมินเท่านั้น
+  const { error } = await supabase.rpc('delete_task', { p_task_id: id });
+  if (error) {
+    if (/forbidden/i.test(error.message)) throw new Error('ลบได้เฉพาะผู้สร้างงาน หัวหน้าทีม หรือแอดมิน');
+    fail(error);
+  }
 }
 
 // ---------- เอกสารที่ต้องมี (CRUD) ----------
@@ -432,9 +482,7 @@ export async function addDocument(taskId, name) {
     });
     return;
   }
-  const { error } = await supabase
-    .from('task_documents')
-    .insert({ task_id: taskId, name: clean, position: Date.now() % 1000000000 });
+  const { error } = await supabase.rpc('add_doc_slot', { p_task_id: taskId, p_label: clean });
   if (error) fail(error);
 }
 
@@ -445,12 +493,12 @@ export async function deleteDocument(taskId, docId) {
     task.documents = task.documents.filter((d) => d.id !== docId);
     return;
   }
-  const { error } = await supabase.from('task_documents').delete().eq('id', docId);
+  const { error } = await supabase.rpc('remove_doc_slot', { p_task_id: taskId, p_label: docId });
   if (error) fail(error);
 }
 
 // เปลี่ยนสถานะเอกสาร + บันทึกประวัติ (ใครเปลี่ยน เป็นอะไร รอใคร เหตุผล หมายเหตุ) ในครั้งเดียว
-// Supabase: ฟังก์ชัน set_document_status ใน schema.sql ทำทั้งสองอย่างใน transaction เดียว
+// Supabase: ฟังก์ชัน set_doc_state (irish-docs/drizzle/0020) ทำทั้งสองอย่างใน transaction เดียว และแจ้งเตือนคนที่ส่งให้ในเว็บ
 export async function setDocumentStatus(taskId, docId, { status, holder = '', reason = '', note = '' }) {
   if (!STATUSES.includes(status)) throw new Error('สถานะไม่ถูกต้อง');
   if (status === 'returned' && !reason.trim()) throw new Error('กรุณาเลือกเหตุผลที่ตีกลับ');
@@ -480,10 +528,11 @@ export async function setDocumentStatus(taskId, docId, { status, holder = '', re
     });
     return;
   }
-  const { error } = await supabase.rpc('set_document_status', {
-    p_document_id: docId,
+  const { error } = await supabase.rpc('set_doc_state', {
+    p_task_id: taskId,
+    p_label: docId,
     p_status: status,
-    p_holder: holder,
+    p_who: holder,
     p_reason: reason,
     p_note: note,
   });
@@ -498,27 +547,13 @@ export async function fetchTaskEvents(taskId) {
     await wait(150);
     return clone(demoData().events.filter((e) => e.taskId === taskId)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
-  const { data, error } = await supabase
-    .from('document_events')
-    .select(EVENT_SELECT)
-    .eq('task_id', taskId)
-    .order('created_at', { ascending: false })
-    .limit(50);
-  if (error) fail(error);
-  return data.map(toEvent);
+  return fetchEvents((q) => q.eq('task_id', taskId).limit(50));
 }
 
 async function recentEvents() {
   if (IS_DEMO) return clone(demoData().events);
   const since = `${addDaysISO(todayISO(), -7)}T00:00:00`;
-  const { data, error } = await supabase
-    .from('document_events')
-    .select(EVENT_SELECT)
-    .gte('created_at', since)
-    .order('created_at', { ascending: false })
-    .limit(200);
-  if (error) fail(error);
-  return data.map(toEvent);
+  return fetchEvents((q) => q.gte('created_at', since).limit(200));
 }
 
 // รายการที่อ่านแล้วเก็บในเครื่อง (ต่อผู้ใช้) · อ่านไม่ได้ให้ถือว่ายังไม่อ่าน
