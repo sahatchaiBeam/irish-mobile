@@ -1,3 +1,6 @@
+-- เลิกใช้ตั้งแต่ 30 ต.ค. 2569: แอปใช้ตารางเดียวกับเว็บ irish-docs (migration ใน irish-docs/drizzle, 0020 = RLS + ฟังก์ชันที่แอปเรียก)
+-- เก็บไฟล์นี้ไว้เป็นประวัติของ MVP v2 (ตารางเดิมย้ายไปอยู่ schema archive_mobile_v2 ใน Supabase)
+
 -- IRISH Docs Mobile · Supabase schema v2 (ติดตามสถานะเอกสาร)
 -- วิธีใช้: Supabase Dashboard › SQL Editor › New query › วางทั้งไฟล์ › Run (รันซ้ำได้ ไม่ลบข้อมูลเดิม)
 --

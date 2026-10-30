@@ -35,7 +35,7 @@ screens/               Login (W1) · Home (W2) · Overview (W3) · Section (W4) 
                        Notifications (W8) · Profile (W9)
 components/            Button Chip Header TaskCard StatusBadge DocRow ProgressBar StatusSheet (W7) CategoryIcon
                        Avatar BottomTab StateView TextField ConfirmDialog Notice
-supabase/schema.sql    ตาราง + Row Level Security + ฟังก์ชัน set_document_status + แม่แบบ/หมวดงานตั้งต้น
+supabase/schema.sql    เลิกใช้ (30 ต.ค. 69) · ฐานข้อมูลใช้ตารางของเว็บ: migration ใน ../irish-docs/drizzle (0020 = RLS + ฟังก์ชันที่แอปเรียก)
 ```
 - หน้าจอเรียกข้อมูลผ่าน `data/api.js` เท่านั้น · import token ด้วย `import { colors, spacing, ... } from '../theme';`
 
@@ -51,7 +51,7 @@ supabase/schema.sql    ตาราง + Row Level Security + ฟังก์ช
 ## 5. ความปลอดภัย
 - ห้ามใส่ `service_role` key รหัสผ่าน หรือข้อมูลส่วนตัวในไฟล์ใด ๆ · anon key ใส่ได้เพราะสิทธิ์คุมด้วย RLS
 - Snack ที่บันทึกแล้วเปิดดูได้สาธารณะ: ถ้าจะแชร์ Snack ให้คน นอกทีม ให้คง `data/config.js` เป็นค่าว่าง (โหมดสาธิต)
-- เปลี่ยนสิทธิ์การเข้าถึงข้อมูลที่ `supabase/schema.sql` เท่านั้น อย่าพึ่งการซ่อนปุ่มในแอป
+- เปลี่ยนสิทธิ์การเข้าถึงข้อมูลด้วย migration ใหม่ใน `../irish-docs/drizzle` เท่านั้น (สิทธิ์ต้องตรงกับเว็บ `src/lib/auth/session.ts`) อย่าพึ่งการซ่อนปุ่มในแอป
 
 ## 6. รายงานหลังทำงาน
 1. **เปลี่ยนอะไร**: ไฟล์ไหน ทำอะไร

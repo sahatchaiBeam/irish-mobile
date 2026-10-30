@@ -8,7 +8,7 @@
 | `APP_BRIEF.md` | แอปต้องทำอะไร: หน้าจอ, flow, กติกา, acceptance checks |
 | `DESIGN.md` | Design tokens ตามสเปก Google DESIGN.md (สี ตัวอักษร ระยะ คอมโพเนนต์) |
 | `AGENTS.md` | กฎสำหรับ AI coding tool (Codex / Claude Code) |
-| `supabase/schema.sql` | ตารางฐานข้อมูล + Row Level Security |
+| `supabase/schema.sql` | (เลิกใช้ 30 ต.ค. 69) ตารางของแอปเมื่อยังแยกจากเว็บ · ตอนนี้ใช้ตารางของเว็บ ดูข้อ 2 |
 | `../document_for_learn/IRISH-Project/` | Problem, Persona, Journey, Wireframe, Prototype, ผลทดสอบ, Pitch, Poster |
 
 ## 1. รันในเครื่อง (ไม่ต้องมี Supabase ก็ได้)
@@ -29,9 +29,14 @@ npx expo start
 
 ## 2. เชื่อม Supabase (ฐานข้อมูล + Login จริง)
 
-1. สมัคร/เข้า https://supabase.com → **New project** (Region: Southeast Asia (Singapore))
-2. **SQL Editor → New query** → วางไฟล์ `supabase/schema.sql` (v2) ทั้งไฟล์ → **Run**
-   ถ้าเคยรัน schema v1 (มีตาราง `checklist_items`) ให้ใช้โปรเจกต์ใหม่ เพราะตาราง `tasks` เปลี่ยนคอลัมน์
+ตั้งแต่ 30 ต.ค. 69 แอปมือถือกับเว็บ irish-docs (https://irish-docs.vercel.app) ใช้ **ฐานข้อมูลและบัญชีผู้ใช้ชุดเดียวกัน** ในโปรเจกต์ Supabase `irish-docs-mobile`
+งานที่สร้างในแอปเห็นในเว็บทันที และกลับกัน
+
+1. **ตาราง:** มาจาก migration ของเว็บ (`irish-docs/drizzle/`) ไม่ต้องรัน `supabase/schema.sql` อีก
+   - `0019` เพิ่มช่องเจ้าของบัญชี (`tasks.account_owner`) และ `user.auth_id`
+   - `0020` (เฉพาะ Supabase) เปิด RLS ทุกตาราง · ผูกบัญชี Supabase กับตาราง `user` ด้วยอีเมล · ฟังก์ชันที่แอปเรียก
+     `create_task` `update_task` `delete_task` `add_doc_slot` `remove_doc_slot` `set_doc_state`
+2. **ข้อมูลที่แอปใช้:** งาน = `tasks` · เอกสารที่ต้องมี = `tasks.doc_slots` + `task_doc_states` · ประวัติ = `activity` (action "สถานะเอกสาร") · ทีม = `categories`
 3. **Authentication → Sign In / Providers → Email**: สำหรับวัน demo แนะนำปิด **Confirm email** (สมัครแล้วเข้าได้ทันที)
    ถ้าเปิดไว้ แอปจะแจ้ง "สมัครสำเร็จ กรุณากดลิงก์ยืนยันในอีเมล…"
 4. **Project Settings → API Keys**: คัดลอก **Project URL** และ **Publishable key** (`sb_publishable_…`) หรือ anon key แบบเดิม
@@ -43,10 +48,10 @@ npx expo start
    - Expo Snack: แทนค่าตัวอย่างใน `data/config.js` ตรง ๆ (Snack อ่าน `.env` ไม่ได้)
 
    ห้ามใช้ `service_role` key เด็ดขาด
-5. รันแอปใหม่ → หน้า Login จะไม่มีกล่อง "โหมดสาธิต" → กด **สมัครสมาชิก**
-6. (ไม่บังคับ) ใส่งานตัวอย่าง: สมัคร 1 บัญชีก่อน แล้วเอา `--` ออกจากก้อน "ข้อมูลตัวอย่าง" ท้าย `schema.sql` แล้วรันเฉพาะก้อนนั้น
+5. รันแอปใหม่ → หน้า Login จะไม่มีกล่อง "โหมดสาธิต" → เข้าสู่ระบบด้วยบัญชีเดียวกับเว็บ (อีเมลหรือ Google)
+6. สร้างงานได้เฉพาะคนที่อยู่ในทีม (หัวหน้าทีมเพิ่มสมาชิกในเว็บ) · แก้งานได้เฉพาะคนในงาน หัวหน้าทีม และแอดมิน (เหมือนเว็บ)
 
-ตรวจว่าเชื่อมสำเร็จ: หน้าโปรไฟล์แสดง "เชื่อมต่อ Supabase แล้ว" · สร้างงานแล้วเห็นแถวใหม่ใน **Table Editor → tasks / task_documents** · อัปเดตสถานะแล้วเห็นแถวใน **document_events**
+ตรวจว่าเชื่อมสำเร็จ: หน้าโปรไฟล์แสดง "เชื่อมต่อ Supabase แล้ว" · งานที่สร้างในแอปขึ้นในเว็บ · อัปเดตสถานะแล้วเห็นบรรทัด "สถานะเอกสาร" ในความเคลื่อนไหวของงานในเว็บ
 
 ### 2.1 เข้าสู่ระบบด้วย Google (ไม่บังคับ)
 
@@ -99,7 +104,7 @@ data/api.js       ทางเดียวที่หน้าจอใช้�
 screens/          Login · Home · Overview · Section · TaskDetail · TaskForm · Notifications · Profile
 components/       Button Chip Header TaskCard StatusBadge DocRow StatusSheet ... (15 ชิ้น)
 utils/            dates · docStatus (สถานะเอกสาร) · taskStatus · notifications
-supabase/         schema.sql
+supabase/         schema.sql (เลิกใช้ ตารางอยู่ที่ irish-docs/drizzle)
 ```
 
 **สถาปัตยกรรม:** แอป (React Native) → `@supabase/supabase-js` → Supabase Auth (JWT) + PostgreSQL (REST อัตโนมัติจาก PostgREST) → Row Level Security ตรวจสิทธิ์ทุกคำขอที่ฐานข้อมูล
